@@ -68,11 +68,11 @@ jobs:
             bash -c \
               "cd /workspace && \
               python -m pip install -r requirements.txt && \
-              cd denonavrlib && python -m pip install . && cd .. && \
+              python -m pip install ./denonavrlib && \
+              mv denonavrlib denonavrlib_source && \
               python -c 'import denonavrlib; print(\"denonavrlib installed successfully\")' && \
               python -c 'from denonavrlib import denonavr; print(\"denonavrlib.denonavr import successful\")' && \
               python -c 'import denonavrlib; print(\"denonavrlib location:\", denonavrlib.__file__)' && \
-              python -c 'import sys; print(\"Python path:\"); [print(p) for p in sys.path]' && \
               pyinstaller --clean --onedir --name intg-denonavr --add-data intg-denonavr/locales:locales --collect-all denonavrlib intg-denonavr/driver.py"
           echo "Clean up locales"
           cd dist/intg-denonavr/_internal/locales
