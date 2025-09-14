@@ -67,12 +67,9 @@ jobs:
             docker.io/unfoldedcircle/r2-pyinstaller:${PYTHON_VER} \
             bash -c \
               "cd /workspace && \
-              pip install --user -r requirements.txt && \
-              pip install --user ./denonavrlib && \
-              pip install --user pyinstaller && \
-              python -c 'import denonavrlib; print(\"denonavrlib found at:\", denonavrlib.__file__)' && \
-              python -c 'from denonavrlib import denonavr; print(\"denonavr import successful\")' && \
-              ~/.local/bin/pyinstaller --clean --onedir --name intg-denonavr --add-data intg-denonavr/locales:locales intg-denonavr/driver.py"
+              python -m pip install -r requirements.txt && \
+              python -m pip install -r denonavrlib/requirements.txt && \
+              pyinstaller --clean --onedir --name intg-denonavr --add-data intg-denonavr/locales:locales --add-data denonavrlib:denonavrlib intg-denonavr/driver.py"
           echo "Clean up locales"
           cd dist/intg-denonavr/_internal/locales
           rm -Rf *.pot Makefile README.md */LC_MESSAGES/*.po
