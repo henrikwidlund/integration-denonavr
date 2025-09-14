@@ -71,7 +71,9 @@ jobs:
               cd denonavrlib && python -m pip install . && cd .. && \
               python -c 'import denonavrlib; print(\"denonavrlib installed successfully\")' && \
               python -c 'from denonavrlib import denonavr; print(\"denonavrlib.denonavr import successful\")' && \
-              pyinstaller --clean --onedir --name intg-denonavr --add-data intg-denonavr/locales:locales --hidden-import denonavrlib --hidden-import denonavrlib.denonavr intg-denonavr/driver.py"
+              python -c 'import denonavrlib; print(\"denonavrlib location:\", denonavrlib.__file__)' && \
+              python -c 'import sys; print(\"Python path:\"); [print(p) for p in sys.path]' && \
+              pyinstaller --clean --onedir --name intg-denonavr --add-data intg-denonavr/locales:locales --collect-all denonavrlib intg-denonavr/driver.py"
           echo "Clean up locales"
           cd dist/intg-denonavr/_internal/locales
           rm -Rf *.pot Makefile README.md */LC_MESSAGES/*.po
