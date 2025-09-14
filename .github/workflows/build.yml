@@ -67,9 +67,10 @@ jobs:
             docker.io/unfoldedcircle/r2-pyinstaller:${PYTHON_VER} \
             bash -c \
               "cd /workspace && \
-              python -m pip install -r requirements.txt && \
-              python -m pip install ./denonavrlib && \
+              python -m pip install --break-system-packages -r requirements.txt && \
+              python -m pip install --break-system-packages ./denonavrlib && \
               mv denonavrlib denonavrlib_source && \
+              python -c 'import sys; print(\"Python path:\"); [print(p) for p in sys.path]' && \
               python -c 'import denonavrlib; print(\"denonavrlib installed successfully\")' && \
               python -c 'from denonavrlib import denonavr; print(\"denonavrlib.denonavr import successful\")' && \
               python -c 'import denonavrlib; print(\"denonavrlib location:\", denonavrlib.__file__)' && \
