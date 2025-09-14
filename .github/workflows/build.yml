@@ -68,8 +68,8 @@ jobs:
             bash -c \
               "cd /workspace && \
               python -m pip install -r requirements.txt && \
-              python -m pip install -r denonavrlib/requirements.txt && \
-              pyinstaller --clean --onedir --name intg-denonavr --add-data intg-denonavr/locales:locales --paths denonavrlib --hidden-import denonavrlib.denonavr intg-denonavr/driver.py"
+              cd denonavrlib && python -m pip install . && cd .. && \
+              pyinstaller --clean --onedir --name intg-denonavr --add-data intg-denonavr/locales:locales intg-denonavr/driver.py"
           echo "Clean up locales"
           cd dist/intg-denonavr/_internal/locales
           rm -Rf *.pot Makefile README.md */LC_MESSAGES/*.po
