@@ -71,7 +71,7 @@ jobs:
               pip install --user ./denonavrlib && \
               mv denonavrlib denonavrlib_source && \
               export PYTHONPATH=~/.local/lib/python3.11/site-packages:\$PYTHONPATH && \
-              pyinstaller --clean --onedir --name intg-denonavr --add-data intg-denonavr/locales:locales --paths ~/.local/lib/python3.11/site-packages intg-denonavr/driver.py"
+              pyinstaller --clean --onedir --name intg-denonavr --add-data intg-denonavr/locales:locales --paths ~/.local/lib/python3.11/site-packages --hidden-import denonavrlib --hidden-import denonavrlib.denonavr --collect-all denonavrlib intg-denonavr/driver.py"
           echo "Clean up locales"
           cd dist/intg-denonavr/_internal/locales
           rm -Rf *.pot Makefile README.md */LC_MESSAGES/*.po
