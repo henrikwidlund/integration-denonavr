@@ -64,6 +64,8 @@ async def on_r2_connect_cmd() -> None:
     method_start_time = time.time()
     await api.set_device_state(ucapi.DeviceStates.CONNECTED)  # just to make sure the device state is set
     for receiver in _configured_avrs.values():
+        # Clear shutdown request on explicit connect command
+        receiver._shutdown_requested = False  # pylint: disable=W0212
         # start background task
         _LOOP.create_task(receiver.connect())
     _LOG.debug("R2 connect command took %.3f seconds", time.time() - method_start_time)
@@ -322,6 +324,8 @@ def _configure_new_avr(device: config.AvrDevice, connect: bool = True) -> None:
         _configured_avrs[device.id] = receiver
 
     if connect:
+        # Clear shutdown request when explicitly connecting a new device
+        receiver._shutdown_requested = False  # pylint: disable=W0212
         # start background connection task
         _LOOP.create_task(receiver.connect())
 
