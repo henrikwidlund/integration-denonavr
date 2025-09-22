@@ -238,6 +238,10 @@ class DenonDevice:
         self._connection_attempts: int = 0
         self._reconnect_delay: float = MIN_RECONNECT_DELAY
 
+        self._connection_task: asyncio.Task | None = None
+        self._shutdown_requested: bool = False
+        self._state_access_in_progress: bool = False
+
         # Workaround for weird state behaviour. Sometimes "off" is always returned from the denonlib!
         self._expected_state: States = States.UNKNOWN
         self._volume_step = device.volume_step
@@ -297,12 +301,24 @@ class DenonDevice:
         """Return the cached state of the device."""
         reported_state = self._map_denonavr_state(self._receiver.state)
         # Dirty workaround for state reporting issue. Couldn't be reproduced yet.
-        if self._use_telnet and reported_state == States.OFF and self._expected_state != States.OFF:
+        # Prevent recursive update calls during state mismatch detection
+        if (
+            self._use_telnet
+            and reported_state == States.OFF
+            and self._expected_state != States.OFF
+            and not self._state_access_in_progress
+        ):
             _LOG.info(
                 "[%s] State mismatch! Using reported: %s. Expected: %s", self.id, reported_state, self._expected_state
             )
-            # Force update because of state mismatch
-            self._event_loop.create_task(self.async_update_receiver_data(True))
+            # Set flag to prevent recursive calls
+            self._state_access_in_progress = True
+            try:
+                # Only trigger update if not already connecting or updating
+                if not self._connecting and not self._update_lock.locked():
+                    self._event_loop.create_task(self.async_update_receiver_data(True))
+            finally:
+                self._state_access_in_progress = False
         return reported_state
 
     def _set_expected_state(self, state: States):
@@ -403,23 +419,51 @@ class DenonDevice:
         until the connection could be established, or disconnect() has been
         called.
 
-        The call is ignored if a connection is already being established.
+        If a connection attempt is already in progress, this method will wait
+        for that attempt to complete rather than starting a new one.
         """
-        if self._connecting:
-            _LOG.debug("Connection task already running for %s", self.id)
-            return
+        if self._connection_task and not self._connection_task.done():
+            _LOG.debug("[%s] Connection already in progress, waiting for completion", self.id)
+            try:
+                await self._connection_task
+                return
+            except asyncio.CancelledError:
+                _LOG.debug("[%s] Existing connection task was cancelled, will start new one", self.id)
+            except Exception as e:
+                _LOG.debug("[%s] Existing connection task failed: %s, will start new one", self.id, e)
 
         if self._active:
             _LOG.debug("[%s] Already connected", self.id)
             return
 
+        # Create new connection task
+        self._connection_task = asyncio.create_task(self._connect_impl())
+        try:
+            await self._connection_task
+        except asyncio.CancelledError:
+            _LOG.debug("[%s] Connection task was cancelled", self.id)
+            raise
+        finally:
+            self._connection_task = None
+
+    async def _connect_impl(self):
+        """Implementation of the connection logic with proper cancellation support."""
         self._connecting = True
         try:
+            # If shutdown was requested before we started, abort immediately
+            if self._shutdown_requested:
+                _LOG.debug("[%s] Shutdown already requested, aborting connection attempt", self.id)
+                return
+
             request_start = None
             success = False
             _LOG.debug("Starting connection task for %s", self.id)
 
-            while not success:
+            while not success and not self._shutdown_requested:
+                # Check for cancellation at the start of each iteration
+                if asyncio.current_task().cancelled():
+                    raise asyncio.CancelledError()
+
                 iteration_start_time = time.time()
                 try:
                     _LOG.info("Connecting AVR %s on %s", self.id, self._receiver.host)
@@ -428,12 +472,14 @@ class DenonDevice:
 
                     if self._use_telnet:
                         await self._receiver.async_telnet_connect()
+                        # Check for cancellation after potentially long operations
+                        if self._shutdown_requested:
+                            break
                         await self._receiver.async_update()
+                        if self._shutdown_requested:
+                            break
                         for event in SUBSCRIBED_TELNET_EVENTS:
                             self._receiver.register_callback(event, self._telnet_callback)
-                        # TODO: Uncomment once we have use for Audyssey information
-                        # if self._update_audyssey:
-                        #     await self._receiver.async_update_audyssey()
                     else:
                         await self._receiver.async_update()
 
@@ -441,26 +487,35 @@ class DenonDevice:
                     self._connection_attempts = 0
                     self._reconnect_delay = MIN_RECONNECT_DELAY
                 except denonavr.exceptions.DenonAvrError as ex:
+                    if self._shutdown_requested:
+                        break
                     await self._handle_connection_failure(time.time() - request_start, ex)
+                except asyncio.CancelledError:
+                    _LOG.debug("[%s] Connection cancelled during attempt", self.id)
+                    raise
                 _LOG.info("Connection attempt took %s", time.time() - iteration_start_time)
-            if self.id != self._receiver.serial_number:
-                _LOG.warning(
-                    "Different device serial number! Expected=%s, received=%s", self.id, self._receiver.serial_number
+
+            if success and not self._shutdown_requested:
+                if self.id != self._receiver.serial_number:
+                    _LOG.warning(
+                        "Different device serial number! Expected=%s, received=%s",
+                        self.id,
+                        self._receiver.serial_number,
+                    )
+
+                _LOG.info(
+                    "Denon/Marantz AVR connected. Manufacturer=%s, Model=%s, Name=%s, Id=%s, State=%s",
+                    self.manufacturer,
+                    self.model_name,
+                    self.name,
+                    self.id,
+                    self._receiver.state,
                 )
 
-            _LOG.info(
-                "Denon/Marantz AVR connected. Manufacturer=%s, Model=%s, Name=%s, Id=%s, State=%s",
-                self.manufacturer,
-                self.model_name,
-                self.name,
-                self.id,
-                self._receiver.state,
-            )
-
-            self._active = True
-            self._expected_state = self._map_denonavr_state(self._receiver.state)
-            self.events.emit(Events.CONNECTED, self.id)
-            _LOG.info("Connect finished in %s", time.time() - request_start)
+                self._active = True
+                self._expected_state = self._map_denonavr_state(self._receiver.state)
+                self.events.emit(Events.CONNECTED, self.id)
+                _LOG.info("Connect finished in %s", time.time() - request_start)
         finally:
             self._connecting = False
 
@@ -505,11 +560,17 @@ class DenonDevice:
         """Disconnect from AVR."""
         _LOG.debug("Disconnect %s", self.id)
         self._reconnect_delay = MIN_RECONNECT_DELAY
-        # Note: disconnecting during a connection task is currently not supported!
-        # Simply setting self._connecting = False doesn't work, and will start even more connection tasks after wakeup!
-        # This requires a state machine, or at least a separate connection task which can be cancelled.
-        if self._connecting:
-            return
+        self._shutdown_requested = True
+
+        # Cancel any ongoing connection task
+        if self._connection_task and not self._connection_task.done():
+            _LOG.debug("[%s] Cancelling connection task during disconnect", self.id)
+            self._connection_task.cancel()
+            try:
+                await self._connection_task
+            except asyncio.CancelledError:
+                pass
+
         self._active = False
 
         try:
@@ -542,43 +603,49 @@ class DenonDevice:
         - an async_update task is still running.
         - a (re-)connection task is currently running.
         """
+        method_start_time = time.time()
         if self._update_lock.locked() or not self._active or self._connecting:
             return
 
-        await self._update_lock.acquire()
-
+        # Use async context manager with timeout for actual lock acquisition
         try:
-            receiver = self._receiver
+            # Add timeout to prevent indefinite blocking (just in case)
+            async with asyncio.timeout(30):  # 30 second timeout
+                async with self._update_lock:
+                    receiver = self._receiver
 
-            # We can only skip the update if telnet was healthy after
-            # the last update and is still healthy now to ensure that
-            # we don't miss any state changes while telnet is down
-            # or reconnecting.
-            # TODO: is this still needed?
-            if (telnet_is_healthy := self._telnet_healthy) and self._telnet_was_healthy:
-                if force:
+                    # We can only skip the update if telnet was healthy after
+                    # the last update and is still healthy now to ensure that
+                    # we don't miss any state changes while telnet is down
+                    # or reconnecting.
+                    if (telnet_is_healthy := self._telnet_healthy) and self._telnet_was_healthy:
+                        if force:
+                            await receiver.async_update()
+                        self._notify_updated_data()
+                        return
+
+                    _LOG.debug("[%s] Fetching status", self.id)
+
+                    # if async_update raises an exception, we don't want to skip the next update
+                    # so we set _telnet_was_healthy to None here and only set it to the value
+                    # before the update if the update was successful
+                    self._telnet_was_healthy = None
+
                     await receiver.async_update()
-                self._notify_updated_data()
-                return
 
-            _LOG.debug("[%s] Fetching status", self.id)
+                    self._telnet_was_healthy = telnet_is_healthy
 
-            # if async_update raises an exception, we don't want to skip the next update
-            # so we set _telnet_was_healthy to None here and only set it to the value
-            # before the update if the update was successful
-            self._telnet_was_healthy = None
+                    # TODO: Uncomment once we have use for Audyssey information
+                    # if self._update_audyssey:
+                    #     await receiver.async_update_audyssey()
 
-            await receiver.async_update()
+                    self._notify_updated_data()
+        except asyncio.TimeoutError:
+            _LOG.warning("[%s] Update operation timed out after 30 seconds", self.id)
+        except Exception as e:
+            _LOG.error("[%s] Error during update: %s", self.id, e)
 
-            self._telnet_was_healthy = telnet_is_healthy
-
-            # TODO: Uncomment once we have use for Audyssey information
-            # if self._update_audyssey:
-            #     await receiver.async_update_audyssey()
-
-            self._notify_updated_data()
-        finally:
-            self._update_lock.release()
+        _LOG.debug("[%s] Status fetch took %.3f seconds", self.id, time.time() - method_start_time)
 
     def _notify_updated_data(self):
         """Notify listeners that the AVR data has been updated."""

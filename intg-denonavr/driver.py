@@ -9,6 +9,7 @@ This module implements a Remote Two/3 integration driver for Denon/Marantz AVR r
 import asyncio
 import logging
 import os
+import time
 from typing import Any
 
 import avr
@@ -36,17 +37,23 @@ async def receiver_status_poller(interval: float = 10.0) -> None:
     # TODO: is it important to delay the first call?
     while True:
         start_time = asyncio.get_event_loop().time()
+        method_start_time = time.time()
         if not _R2_IN_STANDBY:
             try:
+                # Create a copy of the dictionary to prevent concurrent modification issues
+                configured_avrs_snapshot = dict(_configured_avrs)
                 tasks = [
                     receiver.async_update_receiver_data()
-                    for receiver in _configured_avrs.values()
+                    for receiver in configured_avrs_snapshot.values()
                     # pylint: disable=W0212
                     if receiver.active and not (receiver._telnet_healthy)
                 ]
-                await asyncio.gather(*tasks)
-            except (KeyError, ValueError):  # TODO check parallel access / modification while iterating a dict
+                await asyncio.gather(*tasks, return_exceptions=True)
+            except (KeyError, ValueError):
+                # Dictionary was modified during iteration, skip this cycle
+                _LOG.debug("Dictionary modification detected during polling, skipping cycle")
                 pass
+        _LOG.info("receiver_status_poller took %.3f seconds", time.time() - method_start_time)
         elapsed_time = asyncio.get_event_loop().time() - start_time
         await asyncio.sleep(min(10.0, max(1.0, interval - elapsed_time)))
 
@@ -55,10 +62,12 @@ async def receiver_status_poller(interval: float = 10.0) -> None:
 async def on_r2_connect_cmd() -> None:
     """Connect all configured receivers when the Remote Two/3 sends the connect command."""
     _LOG.debug("R2 connect command: connecting device(s)")
+    method_start_time = time.time()
     await api.set_device_state(ucapi.DeviceStates.CONNECTED)  # just to make sure the device state is set
     for receiver in _configured_avrs.values():
         # start background task
         _LOOP.create_task(receiver.connect())
+    _LOG.debug("R2 connect command took %.3f seconds", time.time() - method_start_time)
 
 
 @api.listens_to(ucapi.Events.DISCONNECT)
@@ -95,10 +104,11 @@ async def on_r2_exit_standby() -> None:
 
     _R2_IN_STANDBY = False
     _LOG.debug("Exit standby event: connecting device(s)")
-
+    method_start_time = time.time()
     for configured in _configured_avrs.values():
         # start background task
         _LOOP.create_task(configured.connect())
+    _LOG.info("Exit standby took %.3f seconds", time.time() - method_start_time)
 
 
 @api.listens_to(ucapi.Events.SUBSCRIBE_ENTITIES)
@@ -112,6 +122,7 @@ async def on_subscribe_entities(entity_ids: list[str]) -> None:
 
     _R2_IN_STANDBY = False
     _LOG.debug("Subscribe entities event: %s", entity_ids)
+    method_start_time = time.time()
     for entity_id in entity_ids:
         avr_id = avr_from_entity_id(entity_id)
         if avr_id in _configured_avrs:
@@ -130,6 +141,7 @@ async def on_subscribe_entities(entity_ids: list[str]) -> None:
             _configure_new_avr(device, connect=True)
         else:
             _LOG.error("Failed to subscribe entity %s: no AVR configuration found", entity_id)
+    _LOG.info("Subscribe entities took %.3f seconds", time.time() - method_start_time)
 
 
 @api.listens_to(ucapi.Events.UNSUBSCRIBE_ENTITIES)
@@ -292,6 +304,7 @@ def _configure_new_avr(device: config.AvrDevice, connect: bool = True) -> None:
     :param connect: True: start connection to receiver.
     """
     # the device should not yet be configured, but better be safe
+    method_start_time = time.time()
     if device.id in _configured_avrs:
         receiver = _configured_avrs[device.id]
         if not connect:
@@ -312,6 +325,7 @@ def _configure_new_avr(device: config.AvrDevice, connect: bool = True) -> None:
         _LOOP.create_task(receiver.connect())
 
     _register_available_entities(device, receiver)
+    _LOG.info("Configured new AVR %s took %.3f seconds", device.id, time.time() - method_start_time)
 
 
 def _register_available_entities(device: config.AvrDevice, receiver: avr.DenonDevice) -> None:
