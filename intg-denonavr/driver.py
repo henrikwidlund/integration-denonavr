@@ -52,7 +52,6 @@ async def receiver_status_poller(interval: float = 10.0) -> None:
             except (KeyError, ValueError):
                 # Dictionary was modified during iteration, skip this cycle
                 _LOG.debug("Dictionary modification detected during polling, skipping cycle")
-                pass
         _LOG.info("receiver_status_poller took %.3f seconds", time.time() - method_start_time)
         elapsed_time = asyncio.get_event_loop().time() - start_time
         await asyncio.sleep(min(10.0, max(1.0, interval - elapsed_time)))
@@ -106,6 +105,8 @@ async def on_r2_exit_standby() -> None:
     _LOG.debug("Exit standby event: connecting device(s)")
     method_start_time = time.time()
     for configured in _configured_avrs.values():
+        # Clear shutdown request since user is waking up the remote
+        configured._shutdown_requested = False  # pylint: disable=W0212
         # start background task
         _LOOP.create_task(configured.connect())
     _LOG.info("Exit standby took %.3f seconds", time.time() - method_start_time)

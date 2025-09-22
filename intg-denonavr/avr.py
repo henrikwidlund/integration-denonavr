@@ -422,6 +422,7 @@ class DenonDevice:
         If a connection attempt is already in progress, this method will wait
         for that attempt to complete rather than starting a new one.
         """
+        # If there's already an active connection task, wait for it instead of cancelling
         if self._connection_task and not self._connection_task.done():
             _LOG.debug("[%s] Connection already in progress, waiting for completion", self.id)
             try:
@@ -429,7 +430,7 @@ class DenonDevice:
                 return
             except asyncio.CancelledError:
                 _LOG.debug("[%s] Existing connection task was cancelled, will start new one", self.id)
-            except Exception as e:
+            except Exception as e:  # pylint: disable=W0718
                 _LOG.debug("[%s] Existing connection task failed: %s, will start new one", self.id, e)
 
         if self._active:
@@ -618,6 +619,7 @@ class DenonDevice:
                     # the last update and is still healthy now to ensure that
                     # we don't miss any state changes while telnet is down
                     # or reconnecting.
+                    # TODO: is this still needed?
                     if (telnet_is_healthy := self._telnet_healthy) and self._telnet_was_healthy:
                         if force:
                             await receiver.async_update()
@@ -642,7 +644,7 @@ class DenonDevice:
                     self._notify_updated_data()
         except asyncio.TimeoutError:
             _LOG.warning("[%s] Update operation timed out after 30 seconds", self.id)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=W0718
             _LOG.error("[%s] Error during update: %s", self.id, e)
 
         _LOG.debug("[%s] Status fetch took %.3f seconds", self.id, time.time() - method_start_time)
