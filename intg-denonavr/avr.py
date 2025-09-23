@@ -471,6 +471,10 @@ class DenonDevice:
                     self.events.emit(Events.CONNECTING, self.id)
                     request_start = time.time()
 
+                    # Set active early so commands work during connection process
+                    self._active = True
+                    _LOG.debug("[%s] _active set True at %.6f (connect start)", self.id, time.time())
+
                     if self._use_telnet:
                         await self._receiver.async_telnet_connect()
                         # Check for cancellation after potentially long operations
@@ -490,9 +494,13 @@ class DenonDevice:
                 except denonavr.exceptions.DenonAvrError as ex:
                     if self._shutdown_requested:
                         break
+                    # If connection fails, set active back to False
+                    self._active = False
+                    _LOG.debug("[%s] Connection failed, _active set False at %.6f", self.id, time.time())
                     await self._handle_connection_failure(time.time() - request_start, ex)
                 except asyncio.CancelledError:
                     _LOG.debug("[%s] Connection cancelled during attempt", self.id)
+                    self._active = False  # Reset active state on cancellation
                     raise
                 _LOG.info("Connection attempt took %s", time.time() - iteration_start_time)
 
@@ -513,10 +521,13 @@ class DenonDevice:
                     self._receiver.state,
                 )
 
-                self._active = True
+                # _active is already set to True above
                 self._expected_state = self._map_denonavr_state(self._receiver.state)
                 self.events.emit(Events.CONNECTED, self.id)
                 _LOG.info("Connect finished in %s", time.time() - request_start)
+            else:
+                # Connection didn't succeed, ensure active is False
+                self._active = False
         finally:
             self._connecting = False
 
@@ -658,8 +669,16 @@ class DenonDevice:
         self.events.emit(Events.UPDATE, self.id, None)
 
     async def _telnet_callback(self, zone: str, event: str, parameter: str) -> None:
-        """Process a telnet command callback."""
-        _LOG.debug("[%s] zone: %s, event: %s, parameter: %s", self.id, zone, event, parameter)
+        """Process a telnet command callback by scheduling actual work in background."""
+        # Schedule processing quickly and return so denonavrlib isn't blocked by heavy processing bursts
+        try:
+            self._event_loop.create_task(self._process_telnet_event(zone, event, parameter))
+        except Exception as exc:  # pylint: disable=W0718
+            _LOG.exception("[%s] Failed to schedule telnet event processing: %s", self.id, exc)
+
+    async def _process_telnet_event(self, zone: str, event: str, parameter: str) -> None:
+        """Actual telnet event processing run in background to avoid blocking producers."""
+        _LOG.debug("[%s] _process_telnet_event zone=%s event=%s param=%s", self.id, zone, event, parameter)
 
         # *** Start logic from HA
         # There are multiple checks implemented which reduce unnecessary updates
@@ -669,62 +688,38 @@ class DenonDevice:
             return
         # *** End logic from HA
 
-        if event == "PW":  # Power
-            if parameter == "ON":
+        try:
+            if event == "PW":  # Power
+                if parameter == "ON":
+                    self._set_expected_state(States.ON)
+                elif parameter in ("STANDBY", "OFF"):
+                    self._set_expected_state(States.OFF)
+            elif event == "MV":  # Master Volume
                 self._set_expected_state(States.ON)
-            elif parameter in ("STANDBY", "OFF"):
-                self._set_expected_state(States.OFF)
-        elif event == "MV":  # Master Volume
-            self._set_expected_state(States.ON)
-            level = self.volume_level
-            if level is None:
-                level = int(parameter)
-            self.events.emit(Events.UPDATE, self.id, {MediaAttr.VOLUME: level})
-        elif event == "MU":  # Muted
-            self._set_expected_state(States.ON)
-            muted = parameter == "ON"
-            self.events.emit(Events.UPDATE, self.id, {MediaAttr.MUTED: muted})
-        elif event == "SI":  # Select Input source
-            self._set_expected_state(States.ON)
-            self.events.emit(Events.UPDATE, self.id, {MediaAttr.SOURCE: self._receiver.input_func})
-        elif event == "MS":  # surround Mode Setting
-            self._set_expected_state(States.ON)
-            self.events.emit(Events.UPDATE, self.id, {MediaAttr.SOUND_MODE: self._receiver.sound_mode})
-        elif event == "PS":  # Parameter Setting
-            return  # TODO check if we need to handle certain parameters, likely Audyssey
+                level = self.volume_level
+                if level is None:
+                    try:
+                        level = int(parameter)
+                    except Exception:
+                        level = None
+                if level is not None:
+                    self.events.emit(Events.UPDATE, self.id, {MediaAttr.VOLUME: level})
+            elif event == "MU":  # Muted
+                self._set_expected_state(States.ON)
+                muted = parameter == "ON"
+                self.events.emit(Events.UPDATE, self.id, {MediaAttr.MUTED: muted})
+            elif event == "SI":  # Select Input source
+                self._set_expected_state(States.ON)
+                self.events.emit(Events.UPDATE, self.id, {MediaAttr.SOURCE: self._receiver.input_func})
+            elif event == "MS":  # surround Mode Setting
+                self._set_expected_state(States.ON)
+                self.events.emit(Events.UPDATE, self.id, {MediaAttr.SOUND_MODE: self._receiver.sound_mode})
+            elif event == "PS":  # Parameter Setting
+                return  # TODO check if we need to handle certain parameters, likely Audyssey
 
-        self._notify_updated_data()
-
-        # Switching inputs generates the following events with an AVR-X2700:
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: PS, parameter: CLV 455
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: SS, parameter: LEVC 455
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: SI, parameter: TV
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: CV, parameter: FL 50
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: CV, parameter: FR 50
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: SS, parameter: SMG MUS
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: CV, parameter: END
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: SS, parameter: ALSDSP OFF
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: SS, parameter: ALSSET ON
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: SS, parameter: ALSVAL 000
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: SD, parameter: NO
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: PS, parameter: RSTR OFF
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: DC, parameter: AUTO
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: VS, parameter: SCAUTO
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: VS, parameter: SCHAUTO
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: SS, parameter: HOSIPS ATH
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: VS, parameter: ASPFUL
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: SS, parameter: HOSIPM AUT
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: VS, parameter: VPMAUTO
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: PS, parameter: MULTEQ:AUDYSSEY
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: PS, parameter: DYNEQ ON
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: PS, parameter: DYNVOL OFF
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: PS, parameter: REFLEV 0
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: PS, parameter: DELAY 000
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: PV, parameter: OFF
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: SV, parameter: OFF
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: PS, parameter: HEQ OFF
-        # DEBUG:avr:[DBBZ012118361] zone: Main, event: SS, parameter: HOSSHP OFF
-        # DEBUG:avr:[DBBZ012118361] zone: All, event: PW, parameter: ON
+            self._notify_updated_data()
+        except Exception as exc:  # pylint: disable=W0718
+            _LOG.exception("[%s] Error processing telnet event %s %s: %s", self.id, event, parameter, exc)
 
     @async_handle_denonlib_errors
     async def power_on(self) -> ucapi.StatusCodes:
@@ -776,29 +771,61 @@ class DenonDevice:
     @async_handle_denonlib_errors
     async def volume_up(self) -> ucapi.StatusCodes:
         """Send volume-up command to AVR."""
+        _LOG.debug(
+            "[%s] volume_up called at %.6f (telnet_healthy=%s, expected_vol=%s)",
+            self.id,
+            time.time(),
+            self._telnet_healthy,
+            self._expected_volume,
+        )
+        # Always send the command immediately, regardless of telnet state
+        await self._receiver.async_volume_up()
+        _LOG.debug("[%s] async_volume_up awaited at %.6f", self.id, time.time())
+
+        # Update expected volume for UI feedback
+        if self._expected_volume is not None:
+            self._expected_volume = min(self._expected_volume + self._volume_step, 100)
+            _LOG.debug("[%s] expected_volume updated to %s at %.6f", self.id, self._expected_volume, time.time())
+
+        # Only do fancy telnet-based volume setting if telnet is healthy and we have precise control
         if self._telnet_healthy and self._expected_volume is not None and self._volume_step != 0.5:
-            self._expected_volume = min(self._expected_volume + self._volume_step, 100)
-            await self.set_volume_level(self._expected_volume)
-        else:
-            await self._receiver.async_volume_up()
-            self._expected_volume = min(self._expected_volume + self._volume_step, 100)
-            # Send updated volume if no update task in progress
-            if not self._update_lock.locked():
-                self._event_loop.create_task(self._receiver.async_update())
+            # Send precise volume level via telnet for better control
+            volume_denon = float(self._expected_volume - 80)
+            if volume_denon > 18:
+                volume_denon = float(18)
+            await self._receiver.async_set_volume(volume_denon)
+            _LOG.debug("[%s] async_set_volume (telnet) done at %.6f", self.id, time.time())
+
         return ucapi.StatusCodes.OK
 
     @async_handle_denonlib_errors
     async def volume_down(self) -> ucapi.StatusCodes:
         """Send volume-down command to AVR."""
+        _LOG.debug(
+            "[%s] volume_down called at %.6f (telnet_healthy=%s, expected_vol=%s)",
+            self.id,
+            time.time(),
+            self._telnet_healthy,
+            self._expected_volume,
+        )
+        # Always send the command immediately, regardless of telnet state
+        await self._receiver.async_volume_down()
+        _LOG.debug("[%s] async_volume_down awaited at %.6f", self.id, time.time())
+
+        # Update expected volume for UI feedback
+        if self._expected_volume is not None:
+            self._expected_volume = max(self._expected_volume - self._volume_step, 0)
+            _LOG.debug("[%s] expected_volume updated to %s at %.6f", self.id, self._expected_volume, time.time())
+
+        # Only do fancy telnet-based volume setting if telnet is healthy and we have precise control
         if self._telnet_healthy and self._expected_volume is not None and self._volume_step != 0.5:
-            self._expected_volume = max(self._expected_volume - self._volume_step, 0)
-            await self.set_volume_level(self._expected_volume)
-        else:
-            await self._receiver.async_volume_down()
-            self._expected_volume = max(self._expected_volume - self._volume_step, 0)
-            # Send updated volume if no update task in progress
-            if not self._update_lock.locked():
-                self._event_loop.create_task(self._receiver.async_update())
+            # Send precise volume level via telnet for better control
+            volume_denon = float(self._expected_volume - 80)
+            if volume_denon < -80:
+                volume_denon = float(-80)
+            await self._receiver.async_set_volume(volume_denon)
+            _LOG.debug("[%s] async_set_volume (telnet) done at %.6f", self.id, time.time())
+
         return ucapi.StatusCodes.OK
 
     @async_handle_denonlib_errors
@@ -939,13 +966,18 @@ class DenonDevice:
 
     async def _send_command(self, cmd: str) -> ucapi.StatusCodes:
         """Send a command without error wrapper."""
+        method_start_time = time.time()
+        _LOG.debug("[%s] _send_command called for '%s' at %.6f", self.id, cmd, method_start_time)
         if self._use_telnet:
+            _LOG.debug("[%s] Sending telnet command '%s'", self.id, cmd)
             await self._receiver.async_send_telnet_commands(cmd)
         else:
             url = AVR_COMMAND_URL + "?" + parse.quote(cmd)
+            _LOG.debug("[%s] Sending HTTP command '%s' -> %s", self.id, cmd, url)
             # HACK only _receiver.async_get_command(url) is exposed which returns the body content
             # pylint: disable=protected-access
             res = await self._receiver._device.api.async_get(url)
+            _LOG.debug("[%s] HTTP command '%s' completed at %.6f status=%s", self.id, cmd, time.time(), res.status_code)
             if res.is_client_error:
                 _LOG.error(
                     "Request for '%s' failed with is_client_error. Status code: %s. Content: '%s'",
@@ -962,6 +994,7 @@ class DenonDevice:
                     res.text,
                 )
                 return ucapi.StatusCodes.SERVER_ERROR
+        _LOG.debug("[%s] _send_command for '%s' finished in %.3f", self.id, cmd, time.time() - method_start_time)
         return ucapi.StatusCodes.OK
 
     @property
