@@ -428,11 +428,18 @@ class DenonDevice:
                     request_start = time.time()
 
                     if self._use_telnet:
+                        await self.disconnect()
                         await self._receiver.async_telnet_connect()
                         await self._receiver.async_update()
                         for event in SUBSCRIBED_TELNET_EVENTS:
                             self._receiver.register_callback(event, self._telnet_callback)
                         # warm up telnet connection
+                        _LOG.info(
+                            "Connection is healthy: %s, available: %s, connected: %s",
+                            self._receiver.telnet_healthy,
+                            self._receiver.telnet_available,
+                            self._receiver.telnet_connected,
+                        )
                         warmup_time = time.time()
                         await self._receiver.async_back()
                         _LOG.info("Warmup took %.3f", time.time() - warmup_time)
