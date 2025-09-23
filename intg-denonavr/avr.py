@@ -123,6 +123,7 @@ def async_handle_denonlib_errors(
     Taken from Home-Assistant
     """
 
+    @helpers.timeit
     @wraps(func)
     async def wrapper(self: _DenonDeviceT, *args: _P.args, **kwargs: _P.kwargs) -> ucapi.StatusCodes:
         # pylint: disable=protected-access
@@ -306,6 +307,7 @@ class DenonDevice:
             self._event_loop.create_task(self.async_update_receiver_data(True))
         return reported_state
 
+    @helpers.timeit
     def _set_expected_state(self, state: States):
         """Set expected receiver state and emit update event if changed."""
         old = self._expected_state
@@ -396,6 +398,7 @@ class DenonDevice:
             return self._receiver.station
         return ""
 
+    @helpers.timeit
     async def connect(self):
         """
         Connect to AVR.

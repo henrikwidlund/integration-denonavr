@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import logging
 
+import helpers
+
 from denonavrlib.denonavr import DenonAVR
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,6 +61,7 @@ class ConnectDenonAVR:
         """Return the class containing all connections to the receiver."""
         return self._receiver
 
+    @helpers.timeit
     async def async_connect_receiver(self) -> bool:
         """Connect to the Denon/Marantz AVR receiver."""
         await self.async_init_receiver_class()
@@ -91,6 +94,7 @@ class ConnectDenonAVR:
 
         return True
 
+    @helpers.timeit
     async def async_init_receiver_class(self) -> None:
         """Initialize the DenonAVR class asynchronously."""
         receiver = DenonAVR(

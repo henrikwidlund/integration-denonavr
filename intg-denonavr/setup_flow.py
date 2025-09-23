@@ -12,6 +12,7 @@ from enum import IntEnum
 import avr
 import config
 import discover
+import helpers
 from config import AvrDevice
 from i18n import __, _a, _am
 from receiver import ConnectDenonAVR
@@ -121,6 +122,7 @@ def __telnet_info():
     }
 
 
+@helpers.timeit
 async def driver_setup_handler(msg: SetupDriver) -> SetupAction:
     """
     Dispatch driver setup requests to corresponding handlers.
@@ -158,6 +160,7 @@ async def driver_setup_handler(msg: SetupDriver) -> SetupAction:
     return SetupError()
 
 
+@helpers.timeit
 async def handle_driver_setup(msg: DriverSetupRequest) -> RequestUserInput | SetupError:
     """
     Start driver setup.
@@ -261,6 +264,7 @@ async def handle_driver_setup(msg: DriverSetupRequest) -> RequestUserInput | Set
     return __user_input_discovery()
 
 
+@helpers.timeit
 async def handle_configuration_mode(
     msg: UserDataResponse,
 ) -> RequestUserInput | SetupComplete | SetupError:
@@ -334,6 +338,7 @@ async def handle_configuration_mode(
     return __user_input_discovery()
 
 
+@helpers.timeit
 async def _handle_discovery(msg: UserDataResponse) -> RequestUserInput | SetupError:
     """
     Process user data response in a setup process.
@@ -447,6 +452,7 @@ async def _handle_discovery(msg: UserDataResponse) -> RequestUserInput | SetupEr
     )
 
 
+@helpers.timeit
 async def handle_device_choice(msg: UserDataResponse) -> SetupComplete | SetupError:
     """
     Process user data response in a setup process.
@@ -525,6 +531,7 @@ async def handle_device_choice(msg: UserDataResponse) -> SetupComplete | SetupEr
     return SetupComplete()
 
 
+@helpers.timeit
 async def _handle_device_reconfigure(
     msg: UserDataResponse,
 ) -> SetupComplete | SetupError:
