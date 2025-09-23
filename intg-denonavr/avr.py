@@ -432,11 +432,15 @@ class DenonDevice:
                         await self._receiver.async_update()
                         for event in SUBSCRIBED_TELNET_EVENTS:
                             self._receiver.register_callback(event, self._telnet_callback)
+                        # warm up telnet connection
+                        await self._receiver.async_back()
                         # TODO: Uncomment once we have use for Audyssey information
                         # if self._update_audyssey:
                         #     await self._receiver.async_update_audyssey()
                     else:
                         await self._receiver.async_update()
+                        # warm up telnet connection
+                        await self._receiver.async_back()
 
                     success = True
                     self._connection_attempts = 0
