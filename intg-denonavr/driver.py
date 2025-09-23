@@ -20,6 +20,7 @@ import ucapi
 from config import avr_from_entity_id
 from i18n import _a
 from ucapi.media_player import Attributes as MediaAttr
+import helpers
 
 _LOG = logging.getLogger("driver")  # avoid having __main__ in log messages
 _LOOP = asyncio.get_event_loop()
@@ -31,6 +32,7 @@ _configured_avrs: dict[str, avr.DenonDevice] = {}
 _R2_IN_STANDBY = False
 
 
+@helpers.timeit
 async def receiver_status_poller(interval: float = 10.0) -> None:
     """Receiver data poller."""
     # TODO: is it important to delay the first call?
@@ -51,6 +53,7 @@ async def receiver_status_poller(interval: float = 10.0) -> None:
         await asyncio.sleep(min(10.0, max(1.0, interval - elapsed_time)))
 
 
+@helpers.timeit
 @api.listens_to(ucapi.Events.CONNECT)
 async def on_r2_connect_cmd() -> None:
     """Connect all configured receivers when the Remote Two/3 sends the connect command."""
@@ -61,6 +64,7 @@ async def on_r2_connect_cmd() -> None:
         _LOOP.create_task(receiver.connect())
 
 
+@helpers.timeit
 @api.listens_to(ucapi.Events.DISCONNECT)
 async def on_r2_disconnect_cmd():
     """Disconnect all configured receivers when the Remote Two/3 sends the disconnect command."""
@@ -69,6 +73,7 @@ async def on_r2_disconnect_cmd():
         _LOOP.create_task(receiver.disconnect())
 
 
+@helpers.timeit
 @api.listens_to(ucapi.Events.ENTER_STANDBY)
 async def on_r2_enter_standby() -> None:
     """
@@ -84,6 +89,7 @@ async def on_r2_enter_standby() -> None:
         await configured.disconnect()
 
 
+@helpers.timeit
 @api.listens_to(ucapi.Events.EXIT_STANDBY)
 async def on_r2_exit_standby() -> None:
     """
@@ -101,6 +107,7 @@ async def on_r2_exit_standby() -> None:
         _LOOP.create_task(configured.connect())
 
 
+@helpers.timeit
 @api.listens_to(ucapi.Events.SUBSCRIBE_ENTITIES)
 async def on_subscribe_entities(entity_ids: list[str]) -> None:
     """
@@ -132,6 +139,7 @@ async def on_subscribe_entities(entity_ids: list[str]) -> None:
             _LOG.error("Failed to subscribe entity %s: no AVR configuration found", entity_id)
 
 
+@helpers.timeit
 @api.listens_to(ucapi.Events.UNSUBSCRIBE_ENTITIES)
 async def on_unsubscribe_entities(entity_ids: list[str]) -> None:
     """On unsubscribe, we disconnect the objects and remove listeners for events."""
@@ -151,6 +159,7 @@ async def on_unsubscribe_entities(entity_ids: list[str]) -> None:
             _configured_avrs[entity_id].events.remove_all_listeners()
 
 
+@helpers.timeit
 async def on_avr_connected(avr_id: str):
     """Handle AVR connection."""
     _LOG.debug("AVR connected: %s", avr_id)
@@ -179,6 +188,7 @@ async def on_avr_connected(avr_id: str):
                 )
 
 
+@helpers.timeit
 async def on_avr_disconnected(avr_id: str):
     """Handle AVR disconnection."""
     _LOG.debug("AVR disconnected: %s", avr_id)
@@ -198,6 +208,7 @@ async def on_avr_disconnected(avr_id: str):
             )
 
 
+@helpers.timeit
 async def on_avr_connection_error(avr_id: str, message):
     """Set entities of AVR to state UNAVAILABLE if AVR connection error occurred."""
     _LOG.error(message)
@@ -217,6 +228,7 @@ async def on_avr_connection_error(avr_id: str, message):
             )
 
 
+@helpers.timeit
 async def handle_avr_address_change(avr_id: str, address: str) -> None:
     """Update device configuration with changed IP address."""
     device = config.devices.get(avr_id)
@@ -226,6 +238,7 @@ async def handle_avr_address_change(avr_id: str, address: str) -> None:
         config.devices.update(device)
 
 
+@helpers.timeit
 async def on_avr_update(avr_id: str, update: dict[str, Any] | None) -> None:
     """
     Update attributes of configured media-player entity if AVR properties changed.
@@ -270,6 +283,7 @@ async def on_avr_update(avr_id: str, update: dict[str, Any] | None) -> None:
             api.configured_entities.update_attributes(entity_id, attributes)
 
 
+@helpers.timeit
 def _entities_from_avr(avr_id: str) -> list[str]:
     """
     Return all associated entity identifiers of the given AVR.
@@ -282,6 +296,7 @@ def _entities_from_avr(avr_id: str) -> list[str]:
     return [f"media_player.{avr_id}", f"remote.{avr_id}"]
 
 
+@helpers.timeit
 def _configure_new_avr(device: config.AvrDevice, connect: bool = True) -> None:
     """
     Create and configure a new AVR device.
@@ -314,6 +329,7 @@ def _configure_new_avr(device: config.AvrDevice, connect: bool = True) -> None:
     _register_available_entities(device, receiver)
 
 
+@helpers.timeit
 def _register_available_entities(device: config.AvrDevice, receiver: avr.DenonDevice) -> None:
     """
     Create entities for given receiver device and register them as available entities.
@@ -334,6 +350,7 @@ def _register_available_entities(device: config.AvrDevice, receiver: avr.DenonDe
         api.available_entities.add(entity)
 
 
+@helpers.timeit
 def on_device_added(device: config.AvrDevice) -> None:
     """Handle a newly added device in the configuration."""
     _LOG.debug("New device added: %s", device)
@@ -341,6 +358,7 @@ def on_device_added(device: config.AvrDevice) -> None:
     _configure_new_avr(device, connect=False)
 
 
+@helpers.timeit
 def on_device_removed(device: config.AvrDevice | None) -> None:
     """Handle a removed device in the configuration."""
     if device is None:
@@ -360,12 +378,14 @@ def on_device_removed(device: config.AvrDevice | None) -> None:
                 api.available_entities.remove(entity_id)
 
 
+@helpers.timeit
 async def _async_remove(receiver: avr.DenonDevice) -> None:
     """Disconnect from receiver and remove all listeners."""
     await receiver.disconnect()
     receiver.events.remove_all_listeners()
 
 
+@helpers.timeit
 async def main():
     """Start the Remote Two/3 integration driver."""
     logging.basicConfig()  # when running on the device: timestamps are added by the journal

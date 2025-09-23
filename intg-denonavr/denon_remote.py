@@ -58,6 +58,7 @@ class DenonRemote(Remote):
             ui_pages=DenonRemote._get_remote_ui_pages(device.is_denon),
         )
 
+    @helpers.timeit
     async def command(self, cmd_id: str, params: dict[str, Any] | None = None) -> StatusCodes:
         """
         Remote entity command handler.
@@ -117,6 +118,7 @@ class DenonRemote(Remote):
         return await self._denon_media_player.command(cmd_id)
 
     @staticmethod
+    @helpers.timeit
     def state_from_avr(avr_state: avr.States) -> ucapi.remote.States:
         """
         Convert AVR state to UC API remote state.
@@ -128,6 +130,7 @@ class DenonRemote(Remote):
             return REMOTE_STATE_MAPPING[avr_state]
         return ucapi.remote.States.UNKNOWN
 
+    @helpers.timeit
     def filter_changed_attributes(self, update: dict[str, Any]) -> dict[str, Any]:
         """
         Filter the given attributes and return only the changed values.
@@ -144,6 +147,7 @@ class DenonRemote(Remote):
         return attributes
 
     @staticmethod
+    @helpers.timeit
     def _get_command_or_status_code(cmd_id: str, command: str) -> str | StatusCodes:
         if not command:
             _LOG.error("Command parameter is missing for cmd_id %s", cmd_id)
@@ -154,6 +158,7 @@ class DenonRemote(Remote):
         return command
 
     @staticmethod
+    @helpers.timeit
     def _get_int_param(param: str, params: dict[str, Any], default: int) -> int:
         try:
             value = params.get(param, default)

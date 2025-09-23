@@ -98,6 +98,7 @@ class DenonMediaPlayer(MediaPlayer):
             options=options,
         )
 
+    @helpers.timeit
     async def command(self, cmd_id: str, params: dict[str, Any] | None = None) -> StatusCodes:
         """
         Media-player entity command handler.
@@ -167,6 +168,7 @@ class DenonMediaPlayer(MediaPlayer):
             case _:
                 return await self._receiver.send_simple_command(cmd_id)
 
+    @helpers.timeit
     def get_supported_commands(self, include_power_state_commands: bool) -> list[str]:
         """
         Get the list of supported commands for this media-player entity.
@@ -201,6 +203,7 @@ class DenonMediaPlayer(MediaPlayer):
             *simplecommand.get_simple_commands(self._device),
         ]
 
+    @helpers.timeit
     def filter_changed_attributes(self, update: dict[str, Any]) -> dict[str, Any]:
         """
         Filter the given attributes and return only the changed values.
@@ -253,6 +256,7 @@ class DenonMediaPlayer(MediaPlayer):
         return attributes
 
 
+@helpers.timeit
 def state_from_avr(avr_state: avr.States) -> States:
     """
     Convert AVR state to UC API media-player state.

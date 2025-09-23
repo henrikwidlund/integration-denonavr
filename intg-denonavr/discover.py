@@ -8,10 +8,12 @@ Denon/Marantz AVR device discovery with SSDP.
 import logging
 
 from denonavrlib import denonavr
+import helpers
 
 _LOG = logging.getLogger(__name__)
 
 
+@helpers.timeit
 async def denon_avrs() -> list[dict]:
     """
     Discover Denon/Marantz AVRs on the network with SSDP.

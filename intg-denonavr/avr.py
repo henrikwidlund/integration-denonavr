@@ -38,6 +38,7 @@ from denonavrlib.denonavr.exceptions import (
 )
 
 _LOG = logging.getLogger(__name__)
+import helpers
 
 SETUP_TIMEOUT = 5000
 """AVR connection timeout to retrieve setup information in milliseconds."""
@@ -464,6 +465,7 @@ class DenonDevice:
         finally:
             self._connecting = False
 
+    @helpers.timeit
     async def _handle_connection_failure(self, connect_duration: float, ex):
         self._connection_attempts += 1
         # backoff delay must deduct time spent in the connection attempt
@@ -493,6 +495,7 @@ class DenonDevice:
         else:
             await asyncio.sleep(backoff)
 
+    @helpers.timeit
     def _backoff(self) -> float:
         delay = self._reconnect_delay * BACKOFF_FACTOR
         if delay >= BACKOFF_MAX:
@@ -501,6 +504,7 @@ class DenonDevice:
             self._reconnect_delay = delay
         return self._reconnect_delay
 
+    @helpers.timeit
     async def disconnect(self):
         """Disconnect from AVR."""
         _LOG.debug("Disconnect %s", self.id)
@@ -526,12 +530,14 @@ class DenonDevice:
             self.events.emit(Events.DISCONNECTED, self.id)
 
     @staticmethod
+    @helpers.timeit
     def _map_denonavr_state(avr_state: str | None) -> States:
         """Map the DenonAVR library state to our state."""
         if avr_state and avr_state in DENON_STATE_MAPPING:
             return DENON_STATE_MAPPING[avr_state]
         return States.UNKNOWN
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def async_update_receiver_data(self, force: bool = False) -> None:
         """
@@ -580,6 +586,7 @@ class DenonDevice:
         finally:
             self._update_lock.release()
 
+    @helpers.timeit
     def _notify_updated_data(self):
         """Notify listeners that the AVR data has been updated."""
         # adjust to the real volume level
@@ -588,6 +595,7 @@ class DenonDevice:
         # None update object means data are up to date & client can fetch required data.
         self.events.emit(Events.UPDATE, self.id, None)
 
+    @helpers.timeit
     async def _telnet_callback(self, zone: str, event: str, parameter: str) -> None:
         """Process a telnet command callback."""
         _LOG.debug("[%s] zone: %s, event: %s, parameter: %s", self.id, zone, event, parameter)
@@ -657,6 +665,7 @@ class DenonDevice:
         # DEBUG:avr:[DBBZ012118361] zone: Main, event: SS, parameter: HOSSHP OFF
         # DEBUG:avr:[DBBZ012118361] zone: All, event: PW, parameter: ON
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def power_on(self) -> ucapi.StatusCodes:
         """Send power-on command to AVR."""
@@ -668,6 +677,7 @@ class DenonDevice:
 
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def power_off(self) -> ucapi.StatusCodes:
         """Send power-off command to AVR."""
@@ -679,12 +689,14 @@ class DenonDevice:
 
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     async def power_toggle(self) -> ucapi.StatusCodes:
         """Send power-on or -off command to AVR based on current power state."""
         if self._receiver.power is not None and self._receiver.power == "ON":
             return await self.power_off()
         return await self.power_on()
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def set_volume_level(self, volume: float | None) -> ucapi.StatusCodes:
         """Set volume level, range 0..100."""
@@ -704,6 +716,7 @@ class DenonDevice:
 
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def volume_up(self) -> ucapi.StatusCodes:
         """Send volume-up command to AVR."""
@@ -718,6 +731,7 @@ class DenonDevice:
                 self._event_loop.create_task(self._receiver.async_update())
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def volume_down(self) -> ucapi.StatusCodes:
         """Send volume-down command to AVR."""
@@ -732,6 +746,7 @@ class DenonDevice:
                 self._event_loop.create_task(self._receiver.async_update())
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def play_pause(self) -> ucapi.StatusCodes:
         """Send toggle-play-pause command to AVR."""
@@ -740,6 +755,7 @@ class DenonDevice:
         await self._receiver.async_toggle_play_pause()
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def stop(self) -> ucapi.StatusCodes:
         """Send stop command to AVR."""
@@ -748,6 +764,7 @@ class DenonDevice:
 
         return ucapi.StatusCodes.NOT_IMPLEMENTED
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def next(self) -> ucapi.StatusCodes:
         """Send next-track command to AVR."""
@@ -756,6 +773,7 @@ class DenonDevice:
         await self._receiver.async_next_track()
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def previous(self) -> ucapi.StatusCodes:
         """Send previous-track command to AVR."""
@@ -764,6 +782,7 @@ class DenonDevice:
         await self._receiver.async_previous_track()
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def mute(self, muted: bool) -> ucapi.StatusCodes:
         """Send mute command to AVR."""
@@ -776,6 +795,7 @@ class DenonDevice:
 
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def select_source(self, source: str | None) -> ucapi.StatusCodes:
         """Send input_source command to AVR."""
@@ -788,6 +808,7 @@ class DenonDevice:
         await self._receiver.async_set_input_func(source)
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def select_sound_mode(self, sound_mode: str | None) -> ucapi.StatusCodes:
         """Select sound mode."""
@@ -796,54 +817,63 @@ class DenonDevice:
         await self._receiver.async_set_sound_mode(sound_mode)
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def cursor_up(self) -> ucapi.StatusCodes:
         """Send cursor up command to AVR."""
         await self._receiver.async_cursor_up()
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def cursor_down(self) -> ucapi.StatusCodes:
         """Send cursor down command to AVR."""
         await self._receiver.async_cursor_down()
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def cursor_left(self) -> ucapi.StatusCodes:
         """Send cursor left command to AVR."""
         await self._receiver.async_cursor_left()
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def cursor_right(self) -> ucapi.StatusCodes:
         """Send cursor right command to AVR."""
         await self._receiver.async_cursor_right()
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def cursor_enter(self) -> ucapi.StatusCodes:
         """Send cursor enter command to AVR."""
         await self._receiver.async_cursor_enter()
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def info(self) -> ucapi.StatusCodes:
         """Send info OSD command to AVR."""
         await self._receiver.async_info()
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def options(self) -> ucapi.StatusCodes:
         """Send options menu command to AVR."""
         await self._receiver.async_options()
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def back(self) -> ucapi.StatusCodes:
         """Send back command to AVR."""
         await self._receiver.async_back()
         return ucapi.StatusCodes.OK
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def setup(self) -> ucapi.StatusCodes:
         """Send toggle open/close menu command to AVR."""
@@ -854,6 +884,7 @@ class DenonDevice:
             return ucapi.StatusCodes.OK
         return await self._send_command("MNMEN ON")
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def send_command(self, cmd: str) -> ucapi.StatusCodes:
         """
@@ -863,11 +894,13 @@ class DenonDevice:
         """
         return await self._send_command(cmd)
 
+    @helpers.timeit
     @async_handle_denonlib_errors
     async def send_simple_command(self, cmd: str) -> ucapi.StatusCodes:
         """Send a simple command to the AVR."""
         return await self._simple_command.send_simple_command(cmd)
 
+    @helpers.timeit
     async def _send_command(self, cmd: str) -> ucapi.StatusCodes:
         """Send a command without error wrapper."""
         if self._use_telnet:
@@ -896,10 +929,12 @@ class DenonDevice:
         return ucapi.StatusCodes.OK
 
     @property
+    @helpers.timeit
     def _telnet_healthy(self) -> bool:
         """Return True if telnet connection is enabled and healthy."""
         return self._use_telnet and self._receiver.telnet_connected and self._receiver.telnet_healthy
 
+    @helpers.timeit
     async def _start_update_task(self):
         if not self._telnet_healthy:
             # kick off an update in case of http communication, or if the telnet connection is not healthy
