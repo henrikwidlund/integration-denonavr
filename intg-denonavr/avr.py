@@ -15,6 +15,7 @@ from typing import Any, Awaitable, Callable, Concatenate, Coroutine, ParamSpec, 
 from urllib import parse
 
 import discover
+import helpers
 import ucapi
 from config import AvrDevice
 from pyee.asyncio import AsyncIOEventEmitter
@@ -38,7 +39,6 @@ from denonavrlib.denonavr.exceptions import (
 )
 
 _LOG = logging.getLogger(__name__)
-import helpers
 
 SETUP_TIMEOUT = 5000
 """AVR connection timeout to retrieve setup information in milliseconds."""

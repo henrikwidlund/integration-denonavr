@@ -5,10 +5,10 @@ Helper functions.
 :license: Mozilla Public License Version 2.0, see LICENSE for more details.
 """
 
-from typing import Any, Callable
-import time
 import asyncio
 import functools
+import time
+from typing import Any, Callable
 
 
 def key_update_helper(key: str, value: str | None, attributes: dict, original_attributes: dict[str, Any]):
@@ -27,13 +27,12 @@ def key_update_helper(key: str, value: str | None, attributes: dict, original_at
 
 def timeit(func: Callable[..., Any]) -> Callable[..., Any]:
     """
-    Decorator to measure execution time of both sync and async callables.
+    Measure the execution time of both sync and async callables.
 
     If the wrapped function's module defines a `_LOG` logger variable it will be used to
     emit a debug message with the function qualified name and elapsed time. Otherwise
     the timing is a no-op (just returns the result).
     """
-
     is_coro = asyncio.iscoroutinefunction(func)
 
     @functools.wraps(func)

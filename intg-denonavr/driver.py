@@ -14,13 +14,13 @@ from typing import Any
 import avr
 import config
 import denon_remote
+import helpers
 import media_player
 import setup_flow
 import ucapi
 from config import avr_from_entity_id
 from i18n import _a
 from ucapi.media_player import Attributes as MediaAttr
-import helpers
 
 _LOG = logging.getLogger("driver")  # avoid having __main__ in log messages
 _LOOP = asyncio.get_event_loop()
@@ -61,7 +61,7 @@ async def on_r2_connect_cmd() -> None:
     await api.set_device_state(ucapi.DeviceStates.CONNECTED)  # just to make sure the device state is set
     for receiver in _configured_avrs.values():
         # start background task
-        _LOOP.create_task(receiver.connect())
+        await receiver.connect()
 
 
 @helpers.timeit
@@ -70,7 +70,7 @@ async def on_r2_disconnect_cmd():
     """Disconnect all configured receivers when the Remote Two/3 sends the disconnect command."""
     for receiver in _configured_avrs.values():
         # start background task
-        _LOOP.create_task(receiver.disconnect())
+        await receiver.disconnect()
 
 
 @helpers.timeit
@@ -104,7 +104,7 @@ async def on_r2_exit_standby() -> None:
 
     for configured in _configured_avrs.values():
         # start background task
-        _LOOP.create_task(configured.connect())
+        await configured.connect()
 
 
 @helpers.timeit
@@ -134,7 +134,7 @@ async def on_subscribe_entities(entity_ids: list[str]) -> None:
 
         device = config.devices.get(avr_id)
         if device:
-            _configure_new_avr(device, connect=True)
+            await _configure_new_avr(device, connect=True)
         else:
             _LOG.error("Failed to subscribe entity %s: no AVR configuration found", entity_id)
 
@@ -297,7 +297,7 @@ def _entities_from_avr(avr_id: str) -> list[str]:
 
 
 @helpers.timeit
-def _configure_new_avr(device: config.AvrDevice, connect: bool = True) -> None:
+async def _configure_new_avr(device: config.AvrDevice, connect: bool = True) -> None:
     """
     Create and configure a new AVR device.
 
@@ -310,7 +310,7 @@ def _configure_new_avr(device: config.AvrDevice, connect: bool = True) -> None:
     if device.id in _configured_avrs:
         receiver = _configured_avrs[device.id]
         if not connect:
-            _LOOP.create_task(receiver.disconnect())
+            await receiver.disconnect()
     else:
         receiver = avr.DenonDevice(device, loop=_LOOP)
 
@@ -324,7 +324,7 @@ def _configure_new_avr(device: config.AvrDevice, connect: bool = True) -> None:
 
     if connect:
         # start background connection task
-        _LOOP.create_task(receiver.connect())
+        await receiver.connect()
 
     _register_available_entities(device, receiver)
 
@@ -351,11 +351,11 @@ def _register_available_entities(device: config.AvrDevice, receiver: avr.DenonDe
 
 
 @helpers.timeit
-def on_device_added(device: config.AvrDevice) -> None:
+async def on_device_added(device: config.AvrDevice) -> None:
     """Handle a newly added device in the configuration."""
     _LOG.debug("New device added: %s", device)
     _LOOP.create_task(api.set_device_state(ucapi.DeviceStates.CONNECTED))  # just to make sure the device state is set
-    _configure_new_avr(device, connect=False)
+    await _configure_new_avr(device, connect=False)
 
 
 @helpers.timeit
@@ -409,7 +409,7 @@ async def main():
 
     config.devices = config.Devices(api.config_dir_path, on_device_added, on_device_removed)
     for device in config.devices.all():
-        _configure_new_avr(device, connect=False)
+        await _configure_new_avr(device, connect=False)
 
     # Note: this is useful when using telnet in case the connection is unhealthy
     # and changes are made from another source
