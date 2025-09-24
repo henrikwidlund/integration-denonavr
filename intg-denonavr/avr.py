@@ -431,7 +431,6 @@ class DenonDevice:
                     request_start = time.time()
 
                     if self._use_telnet:
-                        await self.disconnect()
                         await self._receiver.async_telnet_connect()
                         await self._receiver.async_update()
                         for event in SUBSCRIBED_TELNET_EVENTS:
@@ -444,7 +443,8 @@ class DenonDevice:
                             self._receiver.telnet_connected,
                         )
                         warmup_time = time.time()
-                        await self._receiver.async_back()
+                        await self._receiver.async_volume_up()
+                        await self._receiver.async_volume_down()
                         _LOG.info("Warmup took %.3f", time.time() - warmup_time)
                         # TODO: Uncomment once we have use for Audyssey information
                         # if self._update_audyssey:
@@ -453,7 +453,8 @@ class DenonDevice:
                         await self._receiver.async_update()
                         # warm up telnet connection
                         warmup_time = time.time()
-                        await self._receiver.async_back()
+                        await self._receiver.async_volume_up()
+                        await self._receiver.async_volume_down()
                         _LOG.info("Warmup took %.3f", time.time() - warmup_time)
 
                     success = True
