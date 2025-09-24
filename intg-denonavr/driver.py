@@ -351,11 +351,11 @@ def _register_available_entities(device: config.AvrDevice, receiver: avr.DenonDe
 
 
 @helpers.timeit
-async def on_device_added(device: config.AvrDevice) -> None:
+def on_device_added(device: config.AvrDevice):
     """Handle a newly added device in the configuration."""
     _LOG.debug("New device added: %s", device)
     _LOOP.create_task(api.set_device_state(ucapi.DeviceStates.CONNECTED))  # just to make sure the device state is set
-    await _configure_new_avr(device, connect=False)
+    _LOOP.create_task(_configure_new_avr(device, connect=False))
 
 
 @helpers.timeit
