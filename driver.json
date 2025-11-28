@@ -1,15 +1,14 @@
 {
-  "driver_id": "denonavr",
+  "driver_id": "denonavr-debug",
   "version": "0.11.4",
   "min_core_api": "0.20.0",
   "name": {
-    "en": "Denon and Marantz AVR Network Receivers"
+    "en": "DEBUG Denon and Marantz AVR Network Receivers"
   },
   "icon": "uc:tv-music",
   "description": {
-    "_comment": "set at runtime"
+    "en": "Debug build"
   },
-  "port": 8092,
   "developer": {
     "name": "Unfolded Circle ApS",
     "email": "hello@unfoldedcircle.com",
@@ -17,7 +16,24 @@
   },
   "home_page": "https://www.unfoldedcircle.com",
   "setup_data_schema": {
-    "_comment": "set at runtime"
+    "title": {
+      "en": "Setup Process"
+    },
+    "settings": [
+      {
+        "id": "disclaimer_1",
+        "field": {
+          "label": {
+            "value": {
+              "en": "Press next"
+            }
+          }
+        },
+        "label": {
+          "en": ""
+        }
+      }
+    ]
   },
-  "release_date": "2025-11-25"
+  "release_date": "2025-11-28"
 }
