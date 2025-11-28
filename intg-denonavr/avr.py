@@ -885,6 +885,7 @@ class DenonDevice:
 
     async def _send_command(self, cmd: str) -> ucapi.StatusCodes:
         """Send a command without error wrapper."""
+        _LOG.info("Manufacturer: %s, IsDenon: %s", self._receiver.manufacturer, self._receiver._device.is_denon)
         if self._use_telnet:
             await self._receiver.async_send_telnet_commands(cmd)
         else:
