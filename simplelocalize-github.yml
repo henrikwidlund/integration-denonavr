@@ -1,5 +1,5 @@
 pull-request:
-  title: "🌐 Update translations"
+  title: "🌐 Update translations [ci skip]"
   body: |
     This PR contains updated translations from SimpleLocalize.
     Please review the changes before merging.
@@ -8,13 +8,16 @@ pull-request:
 upload:
   when:
     push:
-      branches: ["main"]
+      branches: [ "main" ]
   files:
     - path: "intg-denonavr/locales/en_US/LC_MESSAGES/intg-denonavr.po"
       format: "po-pot"
       language-key: "en_US"
       options:
-        - REPLACE_TRANSLATION_IF_FOUND
+        - "REPLACE_TRANSLATION_IF_FOUND"
+        - "DEPRECATE_NOT_PRESENT_KEYS"
+        - "MARK_AS_ACCEPTED"
+        - "UPDATE_ORDER"
 
 download:
   push-branch: "l10n"
@@ -22,6 +25,9 @@ download:
   files:
     - path: "intg-denonavr/locales/{lang}/LC_MESSAGES/intg-denonavr.po"
       format: "po-pot"
+      sort: "IMPORT_ORDER"
+      options:
+        - "ONLY_ACCEPTED"
       language-keys:
         - "da_DK"
         - "de_DE"
