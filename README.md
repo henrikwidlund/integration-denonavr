@@ -1,8 +1,8 @@
-# Denon AVR integration for Remote Two/3
+# Denon/Marantz AVR integration for Remote Two/3
 
 Using a forked [denonavr](https://github.com/henrikwidlund/denonavr) library
 and [uc-integration-api](https://github.com/aitatoi/integration-python-library),
-[Crowdin translations](https://crowdin.com/project/uc-integration-denon-avr).
+[SimpleLocalize translations](https://simplelocalize.io/suggestions/?id=07b8bc4d63144e75a5bb1100a0f2c971).
 
 This integration is included in the Remote Two and Remote 3 firmware, and no external service must be run to connect
 with Denon AVR devices.
@@ -20,7 +20,7 @@ Receivers can be controlled by HTTP or Telnet. Using Telnet provides realtime up
 receivers are limited to a single connection only (see limitations below).
 
 > [!TIP]
-> Translations for this integration are available on [Crowdin](https://crowdin.com/project/uc-integration-denon-avr),
+> Translations for this integration are available on [SimpleLocalize](https://simplelocalize.io/suggestions/?id=07b8bc4d63144e75a5bb1100a0f2c971),
 > where community contributions are always appreciated. Feel free to add new translations or refine existing ones,
 > especially where machine translations could use a little polish.
 

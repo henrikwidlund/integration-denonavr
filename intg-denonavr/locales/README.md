@@ -4,7 +4,7 @@ This directory contains translation files for the Denon AVR integration. The int
 module for internationalization.
 
 ‼️Only the English .po file may be edited and committed to Git!
-- All other languages are translated by Crowdin.
+- All other languages are translated by SimpleLocalize.
 - Updated texts are pushed back as pull requests.
 
 Translations included in the build:
@@ -15,7 +15,7 @@ Translations included in the build:
 - it_IT
 - sv_SE
 
-See [Crowdin](https://crowdin.com/project/uc-integration-denon-avr) for current translation progress.
+See [SimpleLocalize](https://simplelocalize.io/suggestions/?id=07b8bc4d63144e75a5bb1100a0f2c971) for current translation progress.
 
 How to enable additional translations:
 1. Edit [Makefile](Makefile) and add new language(s) to: `LOCALES = de_DE fr_FR en_US`
